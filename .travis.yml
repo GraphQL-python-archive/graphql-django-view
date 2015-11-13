@@ -22,6 +22,6 @@ install:
 - pip install tox coveralls
 
 script:
-- tox -e $TOX_ENV -- --cov=epoxy
+- tox -e $TOX_ENV -- --cov=graphql_django_view
 after_success:
 - coveralls
