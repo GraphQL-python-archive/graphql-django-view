@@ -53,20 +53,20 @@ class GraphQLView(View):
 
             return HttpResponse(
                 status=status_code,
-                content=self.json_encode(response),
+                content=self.json_encode(request, response),
                 content_type='application/json'
             )
 
         except HttpError as e:
             response = e.response
             response['Content-Type'] = 'application/json'
-            response.content = self.json_encode({
-                'errors': [{'message': six.text_type(e.message)}]
+            response.content = self.json_encode(request, {
+                'errors': [self.format_error(e)]
             })
             return response
 
-    def json_encode(self, d):
-        if not self.pretty:
+    def json_encode(self, request, d):
+        if not self.pretty and not request.GET.get('pretty'):
             return json.dumps(d, separators=(',', ':'))
 
         return json.dumps(d, sort_keys=True,
@@ -81,7 +81,7 @@ class GraphQLView(View):
 
         elif content_type == 'application/json':
             try:
-                request_json = json.load(request.body)
+                request_json = json.loads(request.body.decode())
                 assert isinstance(request_json, dict)
                 return request_json
             except:
@@ -148,12 +148,7 @@ class GraphQLView(View):
         if isinstance(error, GraphQLError):
             return format_graphql_error(error)
 
-        elif isinstance(error, Exception):
-            return {
-                'message': six.text_type(error)
-            }
-
-        return error
+        return {'message': six.text_type(error)}
 
     @staticmethod
     def get_content_type(request):
