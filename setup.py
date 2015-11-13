@@ -12,6 +12,7 @@ setup(
     author_email='me' '@' 'jh.gg',
     license='MIT',
     classifiers=[
+        'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Developers',
         'Topic :: Software Development :: Libraries',
         'Programming Language :: Python :: 2',
