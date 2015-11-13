@@ -1,76 +1,151 @@
-"""
-From graphene.contrib.django.view
-
-TODO: Improve/fix me.
-
-"""
-
 import json
-from django.conf import settings
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseNotAllowed
+from django.http.response import HttpResponseBadRequest
 from django.views.generic import View
-from graphql.core.error import GraphQLError, format_error
+from graphql.core import Source, parse, validate
+from graphql.core.error import GraphQLError, format_error as format_graphql_error
+from graphql.core.execution import get_default_executor, ExecutionResult
+from graphql.core.utils.get_operation_ast import get_operation_ast
+import six
 
 
-def form_error(error):
-    if isinstance(error, GraphQLError):
-        return format_error(error)
-    return error
+class HttpError(Exception):
+    def __init__(self, response, message=None, *args, **kwargs):
+        self.response = response
+        self.message = message or response.content
+        super(HttpError, self).__init__(message, *args, **kwargs)
 
 
 class GraphQLView(View):
     schema = None
+    executor = None
+    root_value = None
+    pretty = False
+
+    def __init__(self, **kwargs):
+        super(GraphQLView, self).__init__(**kwargs)
+
+        if not self.executor:
+            self.executor = get_default_executor()
+
+    def get_root_value(self):
+        return self.root_value
+
+    def dispatch(self, request, *args, **kwargs):
+        try:
+            if request.method.lower() not in ('get', 'post'):
+                raise HttpError(HttpResponseNotAllowed(['GET', 'POST'], 'GraphQL only supports GET and POST requests.'))
+
+            execution_result = self.execute_graphql_request(request)
+            response = {}
+
+            if execution_result.errors:
+                response['errors'] = map(self.format_error, execution_result.errors)
+
+            if execution_result.invalid:
+                status_code = 400
+            else:
+                status_code = 200
+                response['data'] = execution_result.data
+
+            return HttpResponse(
+                status=status_code,
+                content=self.json_encode(response),
+                content_type='application/json'
+            )
+
+        except HttpError as e:
+            response = e.response
+            response['Content-Type'] = 'application/json'
+            response.content = self.json_encode({
+                'errors': [{'message': response.content}]
+            })
+            return response
+
+    def json_encode(self, d):
+        if not self.pretty:
+            return json.dumps(d, separators=(',', ':'))
+
+        return json.dumps(d, sort_keys=True,
+                          indent=2, separators=(',', ': '))
+
+    # noinspection PyBroadException
+    def parse_body(self, request):
+        content_type = self.get_content_type(request)
+
+        if content_type == 'application/graphql':
+            return {'query': request.body}
+
+        elif content_type == 'application/json':
+            try:
+                request_json = json.load(request.body)
+                assert isinstance(request_json, dict)
+                return request_json
+            except:
+                raise HttpError(HttpResponseBadRequest('POST body sent invalid JSON.'))
+
+        elif content_type == 'application/x-www-form-urlencoded':
+            return request.POST
+
+        return {}
+
+    def execute_graphql_request(self, request):
+        query, variables, operation_name = self.get_graphql_params(request, self.parse_body(request))
+
+        if not query:
+            raise HttpError(HttpResponseBadRequest('Must provide query string.'))
+
+        source = Source(query, name='GraphQL request')
+
+        try:
+            document_ast = parse(source)
+        except Exception as e:
+            return ExecutionResult(errors=[e], invalid=True)
+
+        validation_errors = validate(self.schema, document_ast)
+        if validation_errors:
+            return ExecutionResult(invalid=True, errors=validation_errors)
+
+        if request.method.lower() == 'get':
+            operation_ast = get_operation_ast(document_ast, operation_name)
+            if operation_ast and operation_ast.operation != 'query':
+                raise HttpError(HttpResponseNotAllowed(
+                    ['POST'], 'Can only perform a {} operation from a POST request.'.format(operation_ast.operation)
+                ))
+
+        return self.executor.execute(
+            self.schema,
+            document_ast,
+            self.get_root_value(),
+            variables,
+            operation_name,
+            validate_ast=False
+        )
 
     @staticmethod
-    def format_result(result):
-        data = {'data': result.data}
-        if result.errors:
-            data['errors'] = list(map(form_error, result.errors))
+    def get_graphql_params(request, data):
+        query = request.GET.get('query') or data.get('query')
+        variables = request.GET.get('variables') or data.get('variables')
 
-        return data
-
-    def response_errors(self, *errors):
-        errors = [{"message": str(e)} for e in errors]
-
-        return HttpResponse(json.dumps({'errors': errors}), content_type='application/json')
-
-    def execute_query(self, request, query, *args, **kwargs):
-        if not query:
-            return self.response_errors(Exception("Must provide query string."))
-
-        else:
+        if variables and isinstance(variables, six.text_type):
             try:
-                result = self.schema.execute(query, *args, **kwargs)
-                data = self.format_result(result)
+                variables = json.loads(variables)
+            except:
+                raise HttpError(HttpResponseBadRequest('Variables are invalid JSON.'))
 
-            except Exception as e:
-                if settings.DEBUG:
-                    raise e
-                return self.response_errors(e)
+        operation_name = request.GET.get('operationName') or data.get('operationName')
 
-        return HttpResponse(json.dumps(data), content_type='application/json')
+        return query, variables, operation_name
 
-    def get(self, request, *args, **kwargs):
-        query = request.GET.get('query')
-        return self.execute_query(request, query or '')
+    @staticmethod
+    def format_error(error):
+        if isinstance(error, GraphQLError):
+            return format_graphql_error(error)
+
+        return error
 
     @staticmethod
     def get_content_type(request):
         meta = request.META
-        return meta.get('CONTENT_TYPE', meta.get('HTTP_CONTENT_TYPE', ''))
-
-    def post(self, request, *args, **kwargs):
-        content_type = self.get_content_type(request)
-
-        if content_type == 'application/json':
-            try:
-                received_json_data = json.loads(request.body.decode())
-                query = received_json_data.get('query')
-
-            except ValueError:
-                return self.response_errors(ValueError("Malformed json body in the post data"))
-
-        else:
-            query = request.POST.get('query') or request.GET.get('query')
-
-        return self.execute_query(request, query or '')
+        content_type = meta.get('CONTENT_TYPE', meta.get('HTTP_CONTENT_TYPE', ''))
+        return content_type.split(';', 1)[0].lower()
