@@ -7,4 +7,4 @@ DATABASES = {
     }
 }
 
-ROOT_URLCONF = 'graphql_django_view.testenv.urls'
+ROOT_URLCONF = 'tests.urls'
