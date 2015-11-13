@@ -31,7 +31,8 @@ class GraphQLView(View):
 
         assert isinstance(self.schema, GraphQLSchema), 'A Schema is required to be provided to GraphQLView.'
 
-    def get_root_value(self):
+    # noinspection PyUnusedLocal
+    def get_root_value(self, request):
         return self.root_value
 
     def dispatch(self, request, *args, **kwargs):
@@ -120,7 +121,7 @@ class GraphQLView(View):
             return self.executor.execute(
                 self.schema,
                 document_ast,
-                self.get_root_value(),
+                self.get_root_value(request),
                 variables,
                 operation_name,
                 validate_ast=False
