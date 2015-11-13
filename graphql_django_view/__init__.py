@@ -4,7 +4,8 @@ from django.http.response import HttpResponseBadRequest
 from django.views.generic import View
 from graphql.core import Source, parse, validate
 from graphql.core.error import GraphQLError, format_error as format_graphql_error
-from graphql.core.execution import get_default_executor, ExecutionResult
+from graphql.core.execution import ExecutionResult, get_default_executor
+from graphql.core.type.schema import GraphQLSchema
 from graphql.core.utils.get_operation_ast import get_operation_ast
 import six
 
@@ -12,7 +13,7 @@ import six
 class HttpError(Exception):
     def __init__(self, response, message=None, *args, **kwargs):
         self.response = response
-        self.message = message or response.content
+        self.message = message = message or response.content.decode()
         super(HttpError, self).__init__(message, *args, **kwargs)
 
 
@@ -28,6 +29,8 @@ class GraphQLView(View):
         if not self.executor:
             self.executor = get_default_executor()
 
+        assert isinstance(self.schema, GraphQLSchema), 'A Schema is required to be provided to GraphQLView.'
+
     def get_root_value(self):
         return self.root_value
 
@@ -40,7 +43,7 @@ class GraphQLView(View):
             response = {}
 
             if execution_result.errors:
-                response['errors'] = map(self.format_error, execution_result.errors)
+                response['errors'] = [self.format_error(e) for e in execution_result.errors]
 
             if execution_result.invalid:
                 status_code = 400
@@ -58,7 +61,7 @@ class GraphQLView(View):
             response = e.response
             response['Content-Type'] = 'application/json'
             response.content = self.json_encode({
-                'errors': [{'message': response.content}]
+                'errors': [{'message': six.text_type(e.message)}]
             })
             return response
 
@@ -74,7 +77,7 @@ class GraphQLView(View):
         content_type = self.get_content_type(request)
 
         if content_type == 'application/graphql':
-            return {'query': request.body}
+            return {'query': request.body.decode()}
 
         elif content_type == 'application/json':
             try:
@@ -113,14 +116,17 @@ class GraphQLView(View):
                     ['POST'], 'Can only perform a {} operation from a POST request.'.format(operation_ast.operation)
                 ))
 
-        return self.executor.execute(
-            self.schema,
-            document_ast,
-            self.get_root_value(),
-            variables,
-            operation_name,
-            validate_ast=False
-        )
+        try:
+            return self.executor.execute(
+                self.schema,
+                document_ast,
+                self.get_root_value(),
+                variables,
+                operation_name,
+                validate_ast=False
+            )
+        except Exception as e:
+            return ExecutionResult(errors=[e], invalid=True)
 
     @staticmethod
     def get_graphql_params(request, data):
@@ -141,6 +147,11 @@ class GraphQLView(View):
     def format_error(error):
         if isinstance(error, GraphQLError):
             return format_graphql_error(error)
+
+        elif isinstance(error, Exception):
+            return {
+                'message': six.text_type(error)
+            }
 
         return error
 
