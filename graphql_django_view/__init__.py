@@ -124,7 +124,8 @@ class GraphQLView(View):
                 self.get_root_value(request),
                 variables,
                 operation_name,
-                validate_ast=False
+                validate_ast=False,
+                request_context=request
             )
         except Exception as e:
             return ExecutionResult(errors=[e], invalid=True)

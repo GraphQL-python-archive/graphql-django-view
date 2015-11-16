@@ -403,3 +403,14 @@ def test_handles_unsupported_http_methods(client):
     assert response_json(response) == {
         'errors': [{'message': 'GraphQL only supports GET and POST requests.'}]
     }
+
+
+def test_passes_request_into_request_context(client):
+    response = client.get(url_string(query='{request}', q='testing'))
+
+    assert response.status_code == 200
+    assert response_json(response) == {
+        'data': {
+            'request': 'testing'
+        }
+    }
