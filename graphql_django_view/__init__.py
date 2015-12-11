@@ -35,6 +35,9 @@ class GraphQLView(View):
     def get_root_value(self, request):
         return self.root_value
 
+    def get_request_context(self, request):
+        return request
+
     def dispatch(self, request, *args, **kwargs):
         try:
             if request.method.lower() not in ('get', 'post'):
@@ -122,7 +125,7 @@ class GraphQLView(View):
                 self.get_root_value(request),
                 variables,
                 operation_name=operation_name,
-                request_context=request
+                request_context=self.get_request_context(request)
             )
         except Exception as e:
             return ExecutionResult(errors=[e], invalid=True)
