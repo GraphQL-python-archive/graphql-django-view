@@ -2,7 +2,7 @@ import json
 from django.http import HttpResponse, HttpResponseNotAllowed
 from django.http.response import HttpResponseBadRequest
 from django.views.generic import View
-from graphql.core import Source, parse, validate
+from graphql.core import Source, parse
 from graphql.core.error import GraphQLError, format_error as format_graphql_error
 from graphql.core.execution import ExecutionResult, get_default_executor
 from graphql.core.type.schema import GraphQLSchema
@@ -93,6 +93,9 @@ class GraphQLView(View):
 
         return {}
 
+    def execute(self, *args, **kwargs):
+        return self.executor.execute(self.schema, *args, **kwargs)
+
     def execute_graphql_request(self, request):
         query, variables, operation_name = self.get_graphql_params(request, self.parse_body(request))
 
@@ -106,10 +109,6 @@ class GraphQLView(View):
         except Exception as e:
             return ExecutionResult(errors=[e], invalid=True)
 
-        validation_errors = validate(self.schema, document_ast)
-        if validation_errors:
-            return ExecutionResult(invalid=True, errors=validation_errors)
-
         if request.method.lower() == 'get':
             operation_ast = get_operation_ast(document_ast, operation_name)
             if operation_ast and operation_ast.operation != 'query':
@@ -118,13 +117,11 @@ class GraphQLView(View):
                 ))
 
         try:
-            return self.executor.execute(
-                self.schema,
+            return self.execute(
                 document_ast,
                 self.get_root_value(request),
                 variables,
-                operation_name,
-                validate_ast=False,
+                operation_name=operation_name,
                 request_context=request
             )
         except Exception as e:
