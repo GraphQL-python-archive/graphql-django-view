@@ -91,7 +91,7 @@ class GraphQLView(View):
             except:
                 raise HttpError(HttpResponseBadRequest('POST body sent invalid JSON.'))
 
-        elif content_type == 'application/x-www-form-urlencoded':
+        elif content_type in ['application/x-www-form-urlencoded', 'multipart/form-data']:
             return request.POST
 
         return {}
