@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-required_packages = ['graphql-core>=0.4.9', 'django>=1.8.0']
+required_packages = ['graphql-core>=0.4.15', 'django>=1.8.0']
 
 setup(
     name='graphql-django-view',
@@ -8,8 +8,8 @@ setup(
     description='A django view that will execute a GraphQL Schema',
     url='https://github.com/graphql-python/graphql-django-view',
     download_url='https://github.com/graphql-python/graphql-django-view/releases',
-    author='Jake Heinz',
-    author_email='me' '@' 'jh.gg',
+    author='Syrus Akbary',
+    author_email='me@syrusakbary.com',
     license='MIT',
     classifiers=[
         'Development Status :: 5 - Production/Stable',
