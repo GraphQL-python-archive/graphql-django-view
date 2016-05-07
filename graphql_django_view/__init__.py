@@ -2,11 +2,11 @@ import json
 from django.http import HttpResponse, HttpResponseNotAllowed
 from django.http.response import HttpResponseBadRequest
 from django.views.generic import View
-from graphql.core import Source, parse
-from graphql.core.error import GraphQLError, format_error as format_graphql_error
-from graphql.core.execution import ExecutionResult, get_default_executor
-from graphql.core.type.schema import GraphQLSchema
-from graphql.core.utils.get_operation_ast import get_operation_ast
+from graphql import Source, parse, execute, validate
+from graphql.error import GraphQLError, format_error as format_graphql_error
+from graphql.execution import ExecutionResult
+from graphql.type.schema import GraphQLSchema
+from graphql.utils.get_operation_ast import get_operation_ast
 import six
 
 
@@ -25,17 +25,13 @@ class GraphQLView(View):
 
     def __init__(self, **kwargs):
         super(GraphQLView, self).__init__(**kwargs)
-
-        if not self.executor:
-            self.executor = get_default_executor()
-
         assert isinstance(self.schema, GraphQLSchema), 'A Schema is required to be provided to GraphQLView.'
 
     # noinspection PyUnusedLocal
     def get_root_value(self, request):
         return self.root_value
 
-    def get_request_context(self, request):
+    def get_context(self, request):
         return request
 
     def dispatch(self, request, *args, **kwargs):
@@ -97,7 +93,7 @@ class GraphQLView(View):
         return {}
 
     def execute(self, *args, **kwargs):
-        return self.executor.execute(self.schema, *args, **kwargs)
+        return execute(self.schema, *args, **kwargs)
 
     def execute_graphql_request(self, request):
         query, variables, operation_name = self.get_graphql_params(request, self.parse_body(request))
@@ -109,6 +105,12 @@ class GraphQLView(View):
 
         try:
             document_ast = parse(source)
+            validation_errors = validate(self.schema, document_ast)
+            if validation_errors:
+                return ExecutionResult(
+                    errors=validation_errors,
+                    invalid=True,
+                )
         except Exception as e:
             return ExecutionResult(errors=[e], invalid=True)
 
@@ -122,10 +124,10 @@ class GraphQLView(View):
         try:
             return self.execute(
                 document_ast,
-                self.get_root_value(request),
-                variables,
+                root_value=self.get_root_value(request),
+                variable_values=variables,
                 operation_name=operation_name,
-                request_context=self.get_request_context(request)
+                context_value=self.get_context(request)
             )
         except Exception as e:
             return ExecutionResult(errors=[e], invalid=True)

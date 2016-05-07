@@ -405,7 +405,7 @@ def test_handles_unsupported_http_methods(client):
     }
 
 
-def test_passes_request_into_request_context(client):
+def test_passes_request_into_context_request(client):
     response = client.get(url_string(query='{request}', q='testing'))
 
     assert response.status_code == 200
