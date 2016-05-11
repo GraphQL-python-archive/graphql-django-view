@@ -90,7 +90,8 @@ class GraphQLView(View):
         elif content_type in ['application/x-www-form-urlencoded', 'multipart/form-data']:
             return request.POST
 
-        return {}
+        else:
+            raise HttpError(HttpResponseBadRequest('Unrecognized content-type: {}'.format(content_type)))
 
     def execute(self, *args, **kwargs):
         return execute(self.schema, *args, **kwargs)
