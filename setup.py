@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-required_packages = ['graphql-core>=0.5.0', 'django>=1.8.0']
+required_packages = ['graphql-core>=0.5.0', 'django>=1.6.0']
 
 setup(
     name='graphql-django-view',
